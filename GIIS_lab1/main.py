@@ -1,19 +1,32 @@
 import tkinter as tk
 from tkinter import messagebox
+import math
 import Module.dda as dda
 import Module.bresenham as bresenham
 import Module.wu as wu
+import Module.circle as circle
+import Module.ellipse as ellipse
+import Module.hyperbola as hyperbola
+import Module.parabola as parabola
 
 
 selected_algorithm = None
 debug_mode = False
 start_point = None
-scale_factor = 4.0
-
+scale_factor = 1.0
+mode = "line"
 def set_algorithm(algorithm_module):
-    global selected_algorithm, start_point
+    global selected_algorithm, start_point, mode
     selected_algorithm = algorithm_module
     start_point = None
+    mode = "line"
+    status_var.set("Выбран алгоритм: " + algorithm_module.__name__)
+
+def set_curve(algorithm_module):
+    global selected_algorithm, start_point, mode
+    selected_algorithm = algorithm_module
+    start_point = None
+    mode = "curve"
     status_var.set("Выбран алгоритм: " + algorithm_module.__name__)
 
 def toggle_debug():
@@ -25,26 +38,67 @@ def toggle_debug():
 def on_canvas_click(event):
     global start_point
     if selected_algorithm is None:
-        messagebox.showwarning("Не выбран алгоритм", "Сначала выберите алгоритм построения отрезка из меню!")
+        messagebox.showwarning("Не выбран алгоритм", "Сначала выберите алгоритм построения из меню!")
         return
 
     x = int(round(event.x / scale_factor))
     y = int(round(event.y / scale_factor))
 
-    if start_point is None:
-        start_point = (x, y)
-        status_var.set(f"Начальная точка: {start_point}")
-    else:
-        end_point = (x, y)
-        status_var.set(f"Отрезок: {start_point} -> {end_point}")
-        selected_algorithm.draw_line(canvas, start_point[0], start_point[1],
-                                     end_point[0], end_point[1], debug_mode)
-        start_point = None
+    if mode == "line":
+        if start_point is None:
+            start_point = (x, y)
+            status_var.set(f"Начальная точка: {start_point}")
+        else:
+            end_point = (x, y)
+            status_var.set(f"Отрезок: {start_point} -> {end_point}")
+            selected_algorithm.draw_line(canvas, start_point[0], start_point[1],
+                                         end_point[0], end_point[1], debug_mode)
+            start_point = None
 
-def zoom(factor, select_x=0, select_y=0):
+    elif mode == "curve":
+        if start_point is None:
+            start_point = (x, y)
+            if selected_algorithm == circle:
+                status_var.set(f"Центр окружности: {start_point}. Выберите точку на окружности.")
+            elif selected_algorithm == ellipse:
+                status_var.set(f"Центр эллипса: {start_point}. Выберите точку для определения полуосей rx и ry.")
+            elif selected_algorithm == hyperbola:
+                status_var.set(f"Центр гиперболы: {start_point}. Выберите точку для определения параметров a и b.")
+            elif selected_algorithm == parabola:
+                status_var.set(f"Вершина параболы: {start_point}. Выберите точку для определения параметра a.")
+            else:
+                status_var.set(f"Центр: {start_point}. Выберите вторую точку.")
+        else:
+            second_point = (x, y)
+            if selected_algorithm == circle:
+                dx = second_point[0] - start_point[0]
+                dy = second_point[1] - start_point[1]
+                radius = int(round(math.sqrt(dx*dx + dy*dy)))
+                status_var.set(f"Окружность: центр {start_point}, радиус {radius}")
+                selected_algorithm.draw_circle(canvas, start_point[0], start_point[1], radius, debug_mode)
+            elif selected_algorithm == ellipse:
+                rx = abs(second_point[0] - start_point[0])
+                ry = abs(second_point[1] - start_point[1])
+                status_var.set(f"Эллипс: центр {start_point}, rx {rx}, ry {ry}")
+                selected_algorithm.draw_ellipse(canvas, start_point[0], start_point[1], rx, ry, debug_mode)
+            elif selected_algorithm == hyperbola:
+                a = abs(second_point[0] - start_point[0])
+                b = abs(second_point[1] - start_point[1])
+                status_var.set(f"Гипербола: центр {start_point}, a {a}, b {b}")
+                selected_algorithm.draw_hyperbola(canvas, start_point[0], start_point[1], a, b, debug_mode)
+            elif selected_algorithm == parabola:
+                if second_point[0] == start_point[0]:
+                    messagebox.showerror("Ошибка", "Невозможно определить параметр a, так как x-координаты совпадают.")
+                else:
+                    a_param = (second_point[1] - start_point[1]) / ((second_point[0] - start_point[0]) ** 2)
+                    status_var.set(f"Парабола: вершина {start_point}, a = {a_param:.4f}")
+                    selected_algorithm.draw_parabola(canvas, start_point[0], start_point[1], a_param, debug_mode)
+            start_point = None
+
+def zoom(factor, pivot_x=0, pivot_y=0):
     global scale_factor
     new_scale = scale_factor * factor
-    canvas.scale("all", select_x, select_y, factor, factor)
+    canvas.scale("all", pivot_x, pivot_y, factor, factor)
     scale_factor = new_scale
     status_var.set(f"Масштаб: {scale_factor:.2f}")
 
@@ -63,7 +117,7 @@ def on_right_click(event):
     context_menu.post(event.x_root, event.y_root)
 
 root = tk.Tk()
-root.title("Графический редактор")
+root.title("Элементарный графический редактор")
 root.geometry("800x600")
 
 menu_bar = tk.Menu(root)
@@ -75,6 +129,13 @@ line_menu.add_command(label="Алгоритм ЦДА", command=lambda: set_algor
 line_menu.add_command(label="Алгоритм Брезенхэма", command=lambda: set_algorithm(bresenham))
 line_menu.add_command(label="Алгоритм Ву", command=lambda: set_algorithm(wu))
 
+curve_menu = tk.Menu(menu_bar, tearoff=0)
+menu_bar.add_cascade(label="Линии второго порядка", menu=curve_menu)
+curve_menu.add_command(label="Окружность", command=lambda: set_curve(circle))
+curve_menu.add_command(label="Эллипс", command=lambda: set_curve(ellipse))
+curve_menu.add_command(label="Гипербола", command=lambda: set_curve(hyperbola))
+curve_menu.add_command(label="Парабола", command=lambda: set_curve(parabola))
+
 debug_menu = tk.Menu(menu_bar, tearoff=0)
 menu_bar.add_cascade(label="Отладка", menu=debug_menu)
 debug_menu.add_command(label="Переключить отладочный режим", command=toggle_debug)
@@ -84,12 +145,10 @@ menu_bar.add_cascade(label="Масштаб", menu=zoom_menu)
 zoom_menu.add_command(label="Увеличить (Zoom In)", command=zoom_in)
 zoom_menu.add_command(label="Уменьшить (Zoom Out)", command=zoom_out)
 
-
-canvas = tk.Canvas(root, bg="white")
+canvas = tk.Canvas(root, width=100, height=100, bg="white")
 canvas.pack(fill=tk.BOTH, expand=True)
 canvas.bind("<Button-1>", on_canvas_click)
 canvas.bind("<Button-3>", on_right_click)
-
 
 orig_create_rectangle = canvas.create_rectangle
 orig_create_line = canvas.create_line
@@ -104,8 +163,10 @@ def create_line_zoomed(*args, **kwargs):
 
 canvas.create_rectangle = create_rectangle_zoomed
 canvas.create_line = create_line_zoomed
+
 status_var = tk.StringVar()
-status_var.set("Выберите алгоритм построения отрезка")
+status_var.set("Выберите алгоритм построения")
 status_bar = tk.Label(root, textvariable=status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
 status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
 root.mainloop()
