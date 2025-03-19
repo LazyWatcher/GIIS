@@ -1,6 +1,5 @@
 import time
 
-
 def draw_line(canvas, x0, y0, x1, y1, debug=False):
 
     dx = x1 - x0

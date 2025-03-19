@@ -4,19 +4,12 @@ import time
 
 def _ipart(x):
     return math.floor(x)
-
-
 def _round(x):
     return _ipart(x + 0.5)
-
-
 def _fpart(x):
     return x - math.floor(x)
-
-
 def _rfpart(x):
     return 1 - _fpart(x)
-
 
 def _plot(canvas, x, y, intensity, debug=False):
     intensity = max(0, min(1, intensity))

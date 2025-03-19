@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, Toplevel
 import math
+
 import Module.dda as dda
 import Module.bresenham as bresenham
 import Module.wu as wu
@@ -8,13 +9,26 @@ import Module.circle as circle
 import Module.ellipse as ellipse
 import Module.hyperbola as hyperbola
 import Module.parabola as parabola
-
+import Module.hermit as hermit
+import Module.bezier as bezier
+import Module.b_spline as b_spline
+import Module.ddd as editor3d
 
 selected_algorithm = None
 debug_mode = False
 start_point = None
 scale_factor = 1.0
 mode = "line"
+parametric_mode = None
+control_points_param = []
+
+
+def open_3d_editor():
+    win = Toplevel()
+    win.title("3D Редактор")
+    editor3d.Editor3D(win, object_file="object.txt")
+
+
 def set_algorithm(algorithm_module):
     global selected_algorithm, start_point, mode
     selected_algorithm = algorithm_module
@@ -29,6 +43,20 @@ def set_curve(algorithm_module):
     mode = "curve"
     status_var.set("Выбран алгоритм: " + algorithm_module.__name__)
 
+def set_parametric_curve(curve_type):
+    global selected_algorithm, start_point, mode, parametric_mode, control_points_param
+    mode = "parametric"
+    parametric_mode = curve_type
+    start_point = None
+    control_points_param = []
+    if curve_type == "hermite":
+        selected_algorithm = hermit
+    elif curve_type == "bezier":
+        selected_algorithm = bezier
+    elif curve_type == "bspline":
+        selected_algorithm = b_spline
+    status_var.set(f"Выбран параметрический метод: {curve_type.capitalize()}")
+
 def toggle_debug():
     global debug_mode
     debug_mode = not debug_mode
@@ -36,9 +64,9 @@ def toggle_debug():
     status_var.set(f"Отладочный режим: {status}")
 
 def on_canvas_click(event):
-    global start_point
+    global start_point, control_points_param
     if selected_algorithm is None:
-        messagebox.showwarning("Не выбран алгоритм", "Сначала выберите алгоритм построения из меню!")
+        messagebox.showwarning("Не выбран алгоритм", "Сначала выберите алгоритм из меню!")
         return
 
     x = int(round(event.x / scale_factor))
@@ -61,7 +89,7 @@ def on_canvas_click(event):
             if selected_algorithm == circle:
                 status_var.set(f"Центр окружности: {start_point}. Выберите точку на окружности.")
             elif selected_algorithm == ellipse:
-                status_var.set(f"Центр эллипса: {start_point}. Выберите точку для определения полуосей rx и ry.")
+                status_var.set(f"Центр эллипса: {start_point}. Выберите точку для определения полуосей.")
             elif selected_algorithm == hyperbola:
                 status_var.set(f"Центр гиперболы: {start_point}. Выберите точку для определения параметров a и b.")
             elif selected_algorithm == parabola:
@@ -88,13 +116,36 @@ def on_canvas_click(event):
                 selected_algorithm.draw_hyperbola(canvas, start_point[0], start_point[1], a, b, debug_mode)
             elif selected_algorithm == parabola:
                 if second_point[0] == start_point[0]:
-                    messagebox.showerror("Ошибка", "Невозможно определить параметр a, так как x-координаты совпадают.")
+                    messagebox.showerror("Ошибка", "Невозможно определить параметр a (x-координаты совпадают).")
                 else:
                     a_param = (second_point[1] - start_point[1]) / ((second_point[0] - start_point[0]) ** 2)
                     status_var.set(f"Парабола: вершина {start_point}, a = {a_param:.4f}")
                     selected_algorithm.draw_parabola(canvas, start_point[0], start_point[1], a_param, debug_mode)
             start_point = None
 
+    elif mode == "parametric":
+        control_points_param.append((x, y))
+        status_var.set(f"Опорные точки: {len(control_points_param)}")
+        if (parametric_mode in ["hermite", "bezier"] and len(control_points_param) == 4) or \
+           (parametric_mode == "bspline" and len(control_points_param) == 4):
+            if parametric_mode == "hermite":
+                hermit.draw_hermite_curve(canvas, control_points_param[0],
+                                          control_points_param[1],
+                                          control_points_param[2],
+                                          control_points_param[3],
+                                          debug_mode)
+                status_var.set("Нарисована кривая Эрмита")
+            elif parametric_mode == "bezier":
+                bezier.draw_bezier_curve(canvas, control_points_param[0],
+                                         control_points_param[1],
+                                         control_points_param[2],
+                                         control_points_param[3],
+                                         debug_mode)
+                status_var.set("Нарисована кривая Безье")
+            elif parametric_mode == "bspline":
+                b_spline.draw_bspline_curve(canvas, control_points_param, debug_mode)
+                status_var.set("Нарисована кривая B-сплайн")
+            control_points_param = []
 def zoom(factor, pivot_x=0, pivot_y=0):
     global scale_factor
     new_scale = scale_factor * factor
@@ -136,6 +187,12 @@ curve_menu.add_command(label="Эллипс", command=lambda: set_curve(ellipse))
 curve_menu.add_command(label="Гипербола", command=lambda: set_curve(hyperbola))
 curve_menu.add_command(label="Парабола", command=lambda: set_curve(parabola))
 
+parametric_menu = tk.Menu(menu_bar, tearoff=0)
+menu_bar.add_cascade(label="Кривые", menu=parametric_menu)
+parametric_menu.add_command(label="Эрмит", command=lambda: set_parametric_curve("hermite"))
+parametric_menu.add_command(label="Безье", command=lambda: set_parametric_curve("bezier"))
+parametric_menu.add_command(label="B-сплайн", command=lambda: set_parametric_curve("bspline"))
+
 debug_menu = tk.Menu(menu_bar, tearoff=0)
 menu_bar.add_cascade(label="Отладка", menu=debug_menu)
 debug_menu.add_command(label="Переключить отладочный режим", command=toggle_debug)
@@ -144,6 +201,10 @@ zoom_menu = tk.Menu(menu_bar, tearoff=0)
 menu_bar.add_cascade(label="Масштаб", menu=zoom_menu)
 zoom_menu.add_command(label="Увеличить (Zoom In)", command=zoom_in)
 zoom_menu.add_command(label="Уменьшить (Zoom Out)", command=zoom_out)
+
+
+ddd_bar = tk.Menu(menu_bar, tearoff=0)
+menu_bar.add_command(label="3D", command=open_3d_editor)
 
 canvas = tk.Canvas(root, width=100, height=100, bg="white")
 canvas.pack(fill=tk.BOTH, expand=True)
